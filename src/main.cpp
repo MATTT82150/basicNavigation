@@ -91,6 +91,28 @@ void autonomous(void) {
   // ..........................................................................
   // Insert autonomous user code here.
   // ..........................................................................
+
+  // ..........................................................................
+  // What I'm thinking for the auto loop:
+  // 
+  // Angle turret to ball-grabbing height
+  // Rev shooter to full/partial speed reverse
+  // While >0 balls seen, or ball count is 0:
+  //   a. Check FOV for balls. If ball count is 0, reverse/look around until one is found.
+  //   b. Align to ball, move towards ball until at edge of camera's visual range
+  //   c. Preset ball-grab sequence since now blind
+  //   d. Keep track of held balls with a list
+  // 
+  // Angle turret to some positive value like +30deg
+  // Rev shooter to full speed forwards
+  // While >0 balls in clip:
+  //   a. Reverse until a hoop of desired color is seen / maybe recall some preset hoop position
+  //   b. Align to hoop
+  //   c. Calculate hoop distance based off of vertical+horizontal size in camera's FOV and known vertical distance
+  //   d. Calculate necessary turret angle + shooter spinrate based off of math
+  //   e. Adjust bot angle + turret angle + shooter spinrate until within a margin of error
+  //   f. Push one ball out with the piston system (the piston positions are preset/known, no calculations or readings needed to see if the ball is shot out)
+  // ..........................................................................
 }
 
 /*---------------------------------------------------------------------------*/
@@ -114,6 +136,31 @@ void usercontrol(void) {
     // Insert user code here. This is where you use the joystick values to
     // update your motors, etc.
     // ........................................................................
+
+    // ..........................................................................
+    // What I'm thinking for the manual loop:
+    //
+    // I'm pretty sure all we're allowed to do here is move motors according to
+    // controller movements, so all I can write here are the button binds I want
+    //
+    // LEFT JOYSTICK
+    //   X: Large-scale forwards movement
+    //   Y: Large-scale turning
+    //
+    // RIGHT JOYSTICK
+    //   X: Fine-control turning
+    //   Y: Turret elevation control
+    //
+    // LEFT BUMPERS
+    //   Top: Set shooter to expulsion.
+    //   Bottom: Set shooter to intake.
+    //
+    // RIGHT BUMPERS
+    //   Top: Push piston outward. Probably set to decay, so you just hold RB
+    //        until a ball comes out and it will slowly reset.
+    //   Bottom: Push piston inward. Pretty much just a way to make the natural
+    //           decay faster.
+    // ..........................................................................
 
     wait(20, msec); // Sleep the task for a short amount of time to
                     // prevent wasted resources.
