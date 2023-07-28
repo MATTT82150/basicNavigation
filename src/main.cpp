@@ -94,11 +94,17 @@ void autonomous(void) {
 
   // ..........................................................................
   // What I'm thinking for the auto loop:
+  //
+  //
   // 
-  // Angle turret to ball-grabbing height
+  // Angle turret to yellow-ball-grabbing height (should probably use a physical-contact position resetting technique)
+  // Align camera with largest yellow target and slam the throttle. Get to the yellow ball as fast as possible for the easy 10 points.
+  // Reverse to around the starting position.
+  //
   // Rev shooter to full/partial speed reverse
-  // While >0 balls seen, or ball count is 0:
-  //   a. Check FOV for balls. If ball count is 0, reverse/look around until one is found.
+  // threshold = number of balls we need to have loaded before we start shooting them.
+  // While >0 balls seen, or ball count is below the threshold:
+  //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
   //   b. Align to ball, move towards ball until at edge of camera's visual range
   //   c. Preset ball-grab sequence since now blind
   //   d. Keep track of held balls with a list
