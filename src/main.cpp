@@ -9,6 +9,7 @@
 #include "vex.h"
 #include "math.h"
 #include "iostream"
+#include <list>
 
 using namespace vex;
 
@@ -60,6 +61,15 @@ float CAMERA_RADIANS_PER_PIXEL = CAMERA_DEGREES_PER_PIXEL / RADIANS_TO_DEGREES;
 float WIDTH_BALL = 2.1;
 float WIDTH_HOOP = 0;
 float WIDTH_INDICATOR = 0;
+
+// array for storage of currently held balls
+
+//int BALL_CAPACITY = 5;
+//int* ballsHeld = new int[BALL_CAPACITY]; // 0 means red ball, 1 means blue ball, 2 means yellow ball. This list is later initialized to -1, meaning no ball.
+std::list<int> ballsHeld;
+
+bool timeLimited = false;
+std::list<int> BALL_TYPES;
 
 // functions and stuff below
 
@@ -143,6 +153,18 @@ vex::vision::object getLargestObject(vex::vision::object* objects) {
   return largestObject;
 }
 
+int getLargestObjectId(vex::vision::object* objects) {
+  int largestXSize = 0;
+  int largestId = 0;
+  for (int i = 0; i < sizeof(objects); i++) {
+    if (objects[i].width > largestXSize) {
+      largestXSize = objects[i].width;
+      largestId = i;
+    }
+  }
+  return largestId;
+}
+
 int getLargestObjectPosX_SingleScan() {
   return camera.largestObject.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
 }
@@ -168,6 +190,7 @@ float getLargestObjectDistance_MultipleScans(float objectWidth, vex::vision::obj
 vex::vision::object* snapshotMultipleColors(int* colors) {
   int size;
   int i;
+  std::list<int> ballTypes;
   for (int c = 0; c < sizeof(colors); c++) {
     camera.takeSnapshot(colors[c]);
     size += camera.objectCount;
@@ -176,15 +199,16 @@ vex::vision::object* snapshotMultipleColors(int* colors) {
   for (int c = 0; c < sizeof(colors); c++) {
     camera.takeSnapshot(colors[c]);
     for (int j = 0; j < camera.objectCount; j++) {
+      ballTypes.push_back(colors[c]);
       combinedData[i] = camera.objects[j];
       i++;
     }
   }
+  BALL_TYPES = ballTypes;
   return combinedData;
 }
 
 void yellowBallRun() {
-  float YELLOW_BALL_RUN_TURNING_GAIN = 0.01;
   // Shooter should already be set to intake mode from the setup phase.
   int ballDistance = 99999;
   // Angle turret to yellow-ball-grabbing height
@@ -193,7 +217,8 @@ void yellowBallRun() {
   while (ballDistance > 5) {
     camera.takeSnapshot(YELLOW_BALL);
     ballDistance = getLargestObjectDistance_SingleScan(WIDTH_BALL);
-    float error = getLargestObjectPosX_SingleScan() * YELLOW_BALL_RUN_TURNING_GAIN;
+    const float TURNING_GAIN = 0.01;
+    float error = getLargestObjectPosX_SingleScan() * TURNING_GAIN;
     driveCommand(30, error);
   }
   // Reverse to around the starting position.
@@ -201,18 +226,43 @@ void yellowBallRun() {
   driveForwardDistance(-20, true);
 }
 
+void ballSearch_GrabFoundBall() {
+  driveForwardDistance(5, true);
+  driveForwardDistance(-5, true);
+}
+
+void ballSearch_GuidanceLoop(vex::vision::object* ballsDetected) {
+  float distance = getLargestObjectDistance_MultipleScans(WIDTH_BALL, ballsDetected);
+  //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
+  if ((sizeof(ballsDetected) > 0 || distance > 12) && !timeLimited) {
+    driveCommand(0, 20);
+  } else {
+    //   b. Align to ball, move towards ball until at edge of camera's visual range
+    const float TURNING_GAIN = 0.02;
+    float error = getLargestObjectPosX_MultipleScans(ballsDetected) * TURNING_GAIN;
+    driveCommand(30, error);
+    if (distance < 3) {
+      //   c. Preset ball-grab sequence since now blind
+      ballSearch_GrabFoundBall();
+      //   d. Keep track of held balls with a list
+      std::list<int>::iterator iter = BALL_TYPES.begin();
+      std::advance(iter, getLargestObjectId(ballsDetected));
+      ballsHeld.push_back(*iter);
+    }
+  }
+}
+
 void searchForBalls() {
   // Rev shooter to full/partial speed reverse
   setShooterDirection(forward);
   // threshold = number of balls we need to have loaded before we start shooting them.
-  vex::vision::object* balls = snapshotMultipleColors(new int[RED_BALL, BLUE_BALL, YELLOW_BALL]);
-  
+  vex::vision::object* ballsDetected = snapshotMultipleColors(new int[RED_BALL, BLUE_BALL, YELLOW_BALL]);
 
+  int BALL_THRESHOLD = 2;
   // While >0 balls seen, or ball count is below the threshold:
-  //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
-  //   b. Align to ball, move towards ball until at edge of camera's visual range
-  //   c. Preset ball-grab sequence since now blind
-  //   d. Keep track of held balls with a list
+  while (sizeof(ballsDetected) > 0 || sizeof(ballsHeld) < BALL_THRESHOLD) {
+    ballSearch_GuidanceLoop(ballsDetected);
+  }
 }
 
 
@@ -241,7 +291,10 @@ void pre_auton(void) {
   // calibrate the position + rotation by reversing back to the wall and resetting the IMU's position
   reverseToWall();
   resetIMU();
-
+  // initialize list of held balls all to -1, meaning no ball
+  //for (int i = 0; i < sizeof(ballsHeld); i++) {
+  //  ballsHeld[i] = -1;
+  //}
 }
 
 /*---------------------------------------------------------------------------*/
