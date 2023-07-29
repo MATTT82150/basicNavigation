@@ -11,7 +11,6 @@
 #include "iostream"
 
 using namespace vex;
-using namespace std;
 
 // A global instance of competition
 competition Competition;
@@ -55,12 +54,12 @@ int CAMERA_PIXEL_WIDTH = 316;
 int CAMERA_PIXEL_HEIGHT = 212;
 int CAMERA_HORIZONTAL_FOV = 61;
 int CAMERA_VERTICAL_FOV = CAMERA_HORIZONTAL_FOV * (CAMERA_PIXEL_HEIGHT / CAMERA_PIXEL_WIDTH);
+float RADIANS_TO_DEGREES = 180/PI;
 float CAMERA_DEGREES_PER_PIXEL = CAMERA_PIXEL_WIDTH/CAMERA_HORIZONTAL_FOV;
 float CAMERA_RADIANS_PER_PIXEL = CAMERA_DEGREES_PER_PIXEL / RADIANS_TO_DEGREES;
 float WIDTH_BALL = 2.1;
 float WIDTH_HOOP = 0;
 float WIDTH_INDICATOR = 0;
-float RADIANS_TO_DEGREES = 180/PI;
 
 // functions and stuff below
 
@@ -119,7 +118,7 @@ void reverseToWall() {
 
 void resetIMU() {
   IMU.calibrate();
-  while(IMU.isCalibrating) {
+  while(IMU.isCalibrating()) {
     wait(1, msec);
   }
 }
@@ -132,18 +131,56 @@ void setShooterDirection(vex::directionType direction) {
   motorShooter.spin(direction, 100, pct);
 }
 
-int getLargestObjectPosX() {
+vex::vision::object getLargestObject(vex::vision::object* objects) {
+  int largestXSize = 0;
+  vex::vision::object largestObject;
+  for (int i = 0; i < sizeof(objects); i++) {
+    if (objects[i].width > largestXSize) {
+      largestXSize = objects[i].width;
+      largestObject = objects[i];
+    }
+  }
+  return largestObject;
+}
+
+int getLargestObjectPosX_SingleScan() {
   return camera.largestObject.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
 }
 
-float getLargestObjectDistance(float objectWidth) {
-  return getObjectDistance(camera.largestObject.width, objectWidth);
+int getLargestObjectPosX_MultipleScans(vex::vision::object* objects) {
+  return getLargestObject(objects).centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
 }
 
 float getObjectDistance(int objectPixelWidth, float objectWidth) {
   float objectFullArcAngle = objectPixelWidth * CAMERA_RADIANS_PER_PIXEL;
   float objectDistance = objectWidth / tan(objectFullArcAngle);
   return objectDistance;
+}
+
+float getLargestObjectDistance_SingleScan(float objectWidth) {
+  return getObjectDistance(camera.largestObject.width, objectWidth);
+}
+
+float getLargestObjectDistance_MultipleScans(float objectWidth, vex::vision::object* objects) {
+  return getObjectDistance(getLargestObject(objects).width, objectWidth);
+}
+
+vex::vision::object* snapshotMultipleColors(int* colors) {
+  int size;
+  int i;
+  for (int c = 0; c < sizeof(colors); c++) {
+    camera.takeSnapshot(colors[c]);
+    size += camera.objectCount;
+  }
+  vex::vision::object* combinedData = new vex::vision::object[size];
+  for (int c = 0; c < sizeof(colors); c++) {
+    camera.takeSnapshot(colors[c]);
+    for (int j = 0; j < camera.objectCount; j++) {
+      combinedData[i] = camera.objects[j];
+      i++;
+    }
+  }
+  return combinedData;
 }
 
 void yellowBallRun() {
@@ -155,8 +192,8 @@ void yellowBallRun() {
   // Align camera with largest yellow target and slam the throttle. Get to the yellow ball as fast as possible for the easy 10 points.
   while (ballDistance > 5) {
     camera.takeSnapshot(YELLOW_BALL);
-    ballDistance = getLargestObjectDistance(WIDTH_BALL);
-    float error = getLargestObjectPosX() * YELLOW_BALL_RUN_TURNING_GAIN;
+    ballDistance = getLargestObjectDistance_SingleScan(WIDTH_BALL);
+    float error = getLargestObjectPosX_SingleScan() * YELLOW_BALL_RUN_TURNING_GAIN;
     driveCommand(30, error);
   }
   // Reverse to around the starting position.
@@ -168,15 +205,8 @@ void searchForBalls() {
   // Rev shooter to full/partial speed reverse
   setShooterDirection(forward);
   // threshold = number of balls we need to have loaded before we start shooting them.
-  camera.takeSnapshot(RED_BALL);
-  vex::safearray<vex::vision::object> redBalls = camera.objects;
-  camera.takeSnapshot(BLUE_BALL);
-  vex::safearray<vex::vision::object> blueBalls = camera.objects;
-  camera.takeSnapshot(YELLOW_BALL);
-  vex::safearray<vex::vision::object> yellowBalls = camera.objects;
-
-  vex::vision::object[] ballsMerged = 
-
+  vex::vision::object* balls = snapshotMultipleColors(new int[RED_BALL, BLUE_BALL, YELLOW_BALL]);
+  
 
   // While >0 balls seen, or ball count is below the threshold:
   //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
@@ -184,6 +214,8 @@ void searchForBalls() {
   //   c. Preset ball-grab sequence since now blind
   //   d. Keep track of held balls with a list
 }
+
+
 
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
@@ -194,6 +226,8 @@ void searchForBalls() {
 /*  function is only called once after the V5 has been powered on and        */
 /*  not every time that the robot is disabled.                               */
 /*---------------------------------------------------------------------------*/
+
+
 
 void pre_auton(void) {
 
@@ -319,13 +353,15 @@ int main() {
 
   /* ---------- CODE THAT TESTS FUNCTIONS ---------- */
 
-  Brain.Screen.setCursor(1,1);
+  /*Brain.Screen.setCursor(1,1);
   Brain.Screen.print("resetArmAngle(); "); try {resetArmAngle(); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
   Brain.Screen.print("setArmAngle(15); "); try {setArmAngle(15); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
   Brain.Screen.print("setShooterDirection(forward); "); try {setShooterDirection(forward); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
   Brain.Screen.print("camera.takeSnapshot(RED_BALL); "); try {camera.takeSnapshot(RED_BALL); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
   Brain.Screen.print("getLargestObjectPosX(); "); try {getLargestObjectPosX(); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
-  Brain.Screen.print("getLargestObjectDistance(WIDTH_BALL); "); try {getLargestObjectDistance(WIDTH_BALL); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("getLargestObjectDistance_SingleScan(WIDTH_BALL); "); try {getLargestObjectDistance_SingleScan(WIDTH_BALL); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
   Brain.Screen.print("yellowBallRun(); "); try {yellowBallRun(); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  */
 
+ searchForBalls();
 }

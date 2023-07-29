@@ -6,8 +6,8 @@ class ImageObjectDetection {
 
   private:
 
-  int xPos;
-  int yPos;
-  int xSize;
-  int ySize;
-}
+  //int xPos;
+  //int yPos;
+  //int xSize;
+  //int ySize;
+};
