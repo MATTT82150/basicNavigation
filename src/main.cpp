@@ -7,12 +7,16 @@
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
 #include "vex.h"
+#include "math.h"
+#include "iostream"
 
 using namespace vex;
+using namespace std;
 
 // A global instance of competition
 competition Competition;
 
+// constants used for physics and motion
 const float TRACKWIDTH = 11.515;
 const float PI = 3.1415;
 const float WHEEL_WIDTH = 4;
@@ -20,14 +24,45 @@ const float DRIVE_WHEEL_GEAR_RATIO = 5;
 
 // A global instance of vex::brain used for printing to the V5 brain screen
 vex::brain       Brain;
-motor motorLeft = motor(PORT1, ratio18_1, false);
-motor motorRight = motor(PORT10, ratio18_1, true);
-motor motorArm = motor(PORT8, ratio18_1, false);
-motor motorElevation = motor(PORT11, ratio18_1, false);
+
+// setting motors
+motor motorLeft = motor(PORT1, ratio18_1, true);
+motor motorRight = motor(PORT10, ratio18_1, false);
+motor motorShooter = motor(PORT8, ratio18_1, false);
+motor motorArm = motor(PORT11, ratio18_1, false);
 motor motorPusher = motor(PORT12, ratio18_1, false);
 
+// setting inertial
+inertial IMU = inertial(PORT3);
 
-// define your global instances of motors and other devices here
+// setting camera color signatures and making a constant to be able to refer to color signatures by the object they detect rather than their signature number
+const int RED_BALL = 0;
+const int BLUE_BALL = 1;
+const int YELLOW_BALL = 2;
+const int RED_HOOP = 3;
+const int BLUE_HOOP = 4;
+const int GREEN_INDICATOR = 5;
+const int YELLOW_INDICATOR = 6;
+vex::vision::signature RED_BALL_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vex::vision::signature BLUE_BALL_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vex::vision::signature YELLOW_BALL_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vex::vision::signature RED_HOOP_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vex::vision::signature BLUE_HOOP_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vex::vision::signature GREEN_INDICATOR_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vex::vision::signature YELLOW_INDICATOR_SIG = vex::vision::signature(1, 0, 0, 0, 0, 0, 0, 0, 0);
+vision camera = vision(PORT2, 50, RED_BALL_SIG, BLUE_BALL_SIG, YELLOW_BALL_SIG, RED_HOOP_SIG, BLUE_HOOP_SIG, GREEN_INDICATOR_SIG, YELLOW_INDICATOR_SIG);
+int CAMERA_PIXEL_WIDTH = 316;
+int CAMERA_PIXEL_HEIGHT = 212;
+int CAMERA_HORIZONTAL_FOV = 61;
+int CAMERA_VERTICAL_FOV = CAMERA_HORIZONTAL_FOV * (CAMERA_PIXEL_HEIGHT / CAMERA_PIXEL_WIDTH);
+float CAMERA_DEGREES_PER_PIXEL = CAMERA_PIXEL_WIDTH/CAMERA_HORIZONTAL_FOV;
+float CAMERA_RADIANS_PER_PIXEL = CAMERA_DEGREES_PER_PIXEL / RADIANS_TO_DEGREES;
+float WIDTH_BALL = 2.1;
+float WIDTH_HOOP = 0;
+float WIDTH_INDICATOR = 0;
+float RADIANS_TO_DEGREES = 180/PI;
+
+// functions and stuff below
 
 void driveForwardDistance(float distance, bool wait) {
     float motorAngle = DRIVE_WHEEL_GEAR_RATIO * distance / (WHEEL_WIDTH * PI);
@@ -61,6 +96,95 @@ void driveCommand(float forwardPercent, float sidePercent) {
     motorRight.spin(forward, forwardPercent - sidePercent, pct);
 }
 
+void driveGlobal(float xPos, float yPos, float angle) {
+
+}
+
+void resetArmAngle() {
+  while (motorArm.current() < 2 || motorArm.velocity(rpm) > 5) {
+    motorArm.spin(forward, 10, pct);
+  }
+  motorArm.stop();
+  motorArm.resetPosition();
+}
+
+void reverseToWall() {
+  while (motorLeft.current() < 2 || motorLeft.velocity(rpm) > 5) {
+    motorLeft.spin(forward, 10, pct);
+    motorRight.spin(forward, 10, pct);
+  }
+  motorLeft.stop();
+  motorRight.stop();
+}
+
+void resetIMU() {
+  IMU.calibrate();
+  while(IMU.isCalibrating) {
+    wait(1, msec);
+  }
+}
+
+void setArmAngle(float angle) {
+  motorArm.spinTo(angle, deg, true);
+}
+
+void setShooterDirection(vex::directionType direction) {
+  motorShooter.spin(direction, 100, pct);
+}
+
+int getLargestObjectPosX() {
+  return camera.largestObject.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
+}
+
+float getLargestObjectDistance(float objectWidth) {
+  return getObjectDistance(camera.largestObject.width, objectWidth);
+}
+
+float getObjectDistance(int objectPixelWidth, float objectWidth) {
+  float objectFullArcAngle = objectPixelWidth * CAMERA_RADIANS_PER_PIXEL;
+  float objectDistance = objectWidth / tan(objectFullArcAngle);
+  return objectDistance;
+}
+
+void yellowBallRun() {
+  float YELLOW_BALL_RUN_TURNING_GAIN = 0.01;
+  // Shooter should already be set to intake mode from the setup phase.
+  int ballDistance = 99999;
+  // Angle turret to yellow-ball-grabbing height
+  setArmAngle(15);
+  // Align camera with largest yellow target and slam the throttle. Get to the yellow ball as fast as possible for the easy 10 points.
+  while (ballDistance > 5) {
+    camera.takeSnapshot(YELLOW_BALL);
+    ballDistance = getLargestObjectDistance(WIDTH_BALL);
+    float error = getLargestObjectPosX() * YELLOW_BALL_RUN_TURNING_GAIN;
+    driveCommand(30, error);
+  }
+  // Reverse to around the starting position.
+  driveForwardDistance(5, true);
+  driveForwardDistance(-20, true);
+}
+
+void searchForBalls() {
+  // Rev shooter to full/partial speed reverse
+  setShooterDirection(forward);
+  // threshold = number of balls we need to have loaded before we start shooting them.
+  camera.takeSnapshot(RED_BALL);
+  vex::safearray<vex::vision::object> redBalls = camera.objects;
+  camera.takeSnapshot(BLUE_BALL);
+  vex::safearray<vex::vision::object> blueBalls = camera.objects;
+  camera.takeSnapshot(YELLOW_BALL);
+  vex::safearray<vex::vision::object> yellowBalls = camera.objects;
+
+  vex::vision::object[] ballsMerged = 
+
+
+  // While >0 balls seen, or ball count is below the threshold:
+  //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
+  //   b. Align to ball, move towards ball until at edge of camera's visual range
+  //   c. Preset ball-grab sequence since now blind
+  //   d. Keep track of held balls with a list
+}
+
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
 /*                                                                           */
@@ -75,6 +199,15 @@ void pre_auton(void) {
 
   // All activities that occur before the competition starts
   // Example: clearing encoders, setting servo positions, ...
+  //
+  // uses a physical-contact position resetting technique
+  resetArmAngle();
+  // shooter should be on intake mode at the beginning
+  setShooterDirection(reverse);
+  // calibrate the position + rotation by reversing back to the wall and resetting the IMU's position
+  reverseToWall();
+  resetIMU();
+
 }
 
 /*---------------------------------------------------------------------------*/
@@ -97,18 +230,12 @@ void autonomous(void) {
   //
   //
   // 
-  // Angle turret to yellow-ball-grabbing height (should probably use a physical-contact position resetting technique)
-  // Align camera with largest yellow target and slam the throttle. Get to the yellow ball as fast as possible for the easy 10 points.
-  // Reverse to around the starting position.
-  //
-  // Rev shooter to full/partial speed reverse
-  // threshold = number of balls we need to have loaded before we start shooting them.
-  // While >0 balls seen, or ball count is below the threshold:
-  //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
-  //   b. Align to ball, move towards ball until at edge of camera's visual range
-  //   c. Preset ball-grab sequence since now blind
-  //   d. Keep track of held balls with a list
-  // 
+  // PART 1: YELLOW BALL RUN
+  yellowBallRun();
+  
+  // PART 2: SEARCH FOR BALLS
+  searchForBalls();
+  // PART 3: SHOOT BALLS
   // Angle turret to some positive value like +30deg
   // Rev shooter to full speed forwards
   // While >0 balls in clip:
@@ -177,7 +304,8 @@ void usercontrol(void) {
 // Main will set up the competition functions and callbacks.
 //
 int main() {
-  // Set up callbacks for autonomous and driver control periods.
+  /* ---------- REAL CODE FOR THE COMPETITION ---------- */
+  /*// Set up callbacks for autonomous and driver control periods.
   Competition.autonomous(autonomous);
   Competition.drivercontrol(usercontrol);
 
@@ -187,5 +315,17 @@ int main() {
   // Prevent main from exiting with an infinite loop.
   while (true) {
     wait(100, msec);
-  }
+  }*/
+
+  /* ---------- CODE THAT TESTS FUNCTIONS ---------- */
+
+  Brain.Screen.setCursor(1,1);
+  Brain.Screen.print("resetArmAngle(); "); try {resetArmAngle(); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("setArmAngle(15); "); try {setArmAngle(15); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("setShooterDirection(forward); "); try {setShooterDirection(forward); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("camera.takeSnapshot(RED_BALL); "); try {camera.takeSnapshot(RED_BALL); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("getLargestObjectPosX(); "); try {getLargestObjectPosX(); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("getLargestObjectDistance(WIDTH_BALL); "); try {getLargestObjectDistance(WIDTH_BALL); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+  Brain.Screen.print("yellowBallRun(); "); try {yellowBallRun(); Brain.Screen.print("succeeded\n");} catch (const std::exception& e) {Brain.Screen.print("failed\n")} wait(1000, msec);
+
 }
