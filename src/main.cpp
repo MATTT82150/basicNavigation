@@ -26,11 +26,44 @@ const float DRIVE_WHEEL_GEAR_RATIO = 5;
 const float ARM_WHEEL_GEAR_RATIO = 5;
 const float ARM_MOTOR_STRIKE_ANGLE = -35;
 
+class vector3 {
+
+  public:
+
+  int x;
+  int y;
+  int z;
+
+  vector3(int x0, int y0, int z0) {
+    x = x0;
+    y = y0;
+    z = z0;
+  }
+
+  vector3 difference(vector3 v) {
+    return vector3(x-v.x, y-v.y, z-v.z);
+  }
+
+  float magnitude() {
+    return sqrtf(x*x + y*y + z*z);
+  }
+
+  vector3 add(vector3 v) {
+    return vector3(x+v.x, y+v.y, z+v.z);
+  }
+};
+
 // constant for the positions of key points, relative to the recalibration position
 const float PLAYING_SIDE = 1; // -1 is left, 1 is right
+bool inTeleopPeriod = false;
+const int TARGET_CENTER_AND_WAIT = -1;
+const int TARGET_RED_HOOP = 0;
+const int TARGET_BLUE_HOOP = 1;
+const int TARGET_CENTER_HOOP = 2;
+const int TARGET_YELLOW_BALL_HOLDER = 3;
 const vector3 RED_HOOP_POSITION = vector3(74, 39.5, 27.5);
 const vector3 BLUE_HOOP_POSITION = vector3(74, 24, 17);
-const vector3 CENTER_HOOP_POSITION = vector3(74, 0, 26)
+const vector3 CENTER_HOOP_POSITION = vector3(74, 0, 26);
 const vector3 YELLOW_BALL_HOLDER_POSITION = vector3(74, 39.5, 10);
 
 // constant for aiming
@@ -175,9 +208,9 @@ void driveGlobal(vector3 positionDesired, float angle) { // drives to desired gl
     heading = IMU.heading();
     headingError = headingDesired - heading;
     headingError = fmod((headingError + 540),360) - 180;
-    headingError *= COORDINATE_GUIDANCE_TURNING_GAIN;
-    distanceError = sqrtf(deltaX*deltaX + deltaY*deltaY) * COORDINATE_GUIDANCE_DISTANCE_GAIN;
-    driveCommand(distanceError, headingError);
+    distanceError = sqrtf(deltaX*deltaX + deltaY*deltaY);
+    float speedMultiplier = (abs(headingError)<10);
+    driveCommand(distanceError * COORDINATE_GUIDANCE_DISTANCE_GAIN, headingError * COORDINATE_GUIDANCE_TURNING_GAIN);
     calculatePosition();
   } while (distanceError > MAX_DISTANCE_FROM_TARGET);
   do {
@@ -191,8 +224,8 @@ void driveGlobal(vector3 positionDesired, float angle) { // drives to desired gl
 }
 
 shooterInputs calculateShotAngleAndVelocity(vector3 targetPosition) {
-  float distanceX = sqrt((targetPosition.x - position.x)*(targetPosition.x - position.x) + (targetPosition.y - position.y)*(targetPosition.y - position.y));
-  float distanceY = targetZ;
+  float distanceX = sqrtf((targetPosition.x - position.x)*(targetPosition.x - position.x) + (targetPosition.y - position.y)*(targetPosition.y - position.y));
+  float distanceY = targetPosition.z;
   float desiredVelocityY = sqrt((-0.5*distanceY*G)/(TARGET_POINT_ALONG_TRAJECTORY - TARGET_POINT_ALONG_TRAJECTORY*TARGET_POINT_ALONG_TRAJECTORY));
   float desiredVelocityX = (distanceX*G)/(-desiredVelocityY + ((TARGET_POINT_ALONG_TRAJECTORY > 0.5) ? -1 : 1) * sqrt(desiredVelocityY*desiredVelocityY + 2*distanceY*G));
   float desiredAngle = atan2f(desiredVelocityY, desiredVelocityX);
@@ -370,9 +403,45 @@ void searchForBalls() { // The part of the auto script that searches for balls w
   }
 }
 
+int getTargetHoop(int ball) { // Get the hoop we should aim to based on the current ball and auto vs. teleop period.
+  if (inTeleopPeriod) {
+    switch(ball) {
+      case RED_BALL: return TARGET_RED_HOOP;
+      case BLUE_BALL: return TARGET_CENTER_HOOP;
+      case YELLOW_BALL: return TARGET_CENTER_HOOP;
+      default: return 1234567890987654; // usually the fail case is -1 but thats already used so just break the int ig
+    }
+  } else {
+    switch (ball) {
+      case RED_BALL: return TARGET_RED_HOOP;
+      case BLUE_BALL: return TARGET_BLUE_HOOP;
+      case YELLOW_BALL: return TARGET_CENTER_AND_WAIT;
+      default: return 1234567890987654;
+    }
+  }
+}
+
+vector3 getTargetPosition(int target) {
+  switch(target) {
+    case TARGET_CENTER_AND_WAIT: return CENTER_HOOP_POSITION;
+    case TARGET_RED_HOOP: return RED_HOOP_POSITION;
+    case TARGET_BLUE_HOOP: return BLUE_HOOP_POSITION;
+    case TARGET_CENTER_HOOP: return CENTER_HOOP_POSITION;
+    case TARGET_YELLOW_BALL_HOLDER: return YELLOW_BALL_HOLDER_POSITION;
+    default: return vector3(0,0,0);
+  }
+}
+
 void shootBalls() {
-  float angleTo
-  driveGlobal(0, 20, );
+  if (sizeof(ballsHeld) == 0) {
+    return;
+  }
+  int ball = *ballsHeld.end();
+  int target = getTargetHoop(ball);
+  vector3 targetPosition = getTargetPosition(target);
+  vector3 deltaPosition = targetPosition.difference(position);
+  float angleToTarget = atan2f(deltaPosition.x, deltaPosition.y) * RADIANS_TO_DEGREES;
+  driveGlobal(vector3(0, 20, 0), angleToTarget);
 
 }
 
