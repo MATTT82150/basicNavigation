@@ -293,7 +293,7 @@ void setShooterDirection(vex::directionType direction) {
   motorShooterR.spin(direction, 100, pct);
 }
 
-void setShooterSpeed(float velocity) { // sets shooter motors to spin at the right rate to reach a target speed in inches/second
+void setShooterSpeed(double velocity) { // sets shooter motors to spin at the right rate to reach a target speed in inches/second
   double targetAngularSpeed = velocity / (WHEEL_WIDTH * SHOOTER_WHEEL_GEAR_RATIO); // shooter uses wheels, so this uses wheel width
   targetAngularSpeed *= SHOOTER_SPEED_MULTIPLIER; // accounts for error
   motorShooterL.spin(forward, targetAngularSpeed, rpm);
@@ -456,6 +456,9 @@ void shootBalls() {
   while (sizeof(ballsHeld > 0)) {
     int ball = *ballsHeld.end();
     int target = getTargetHoop(ball);
+    if (target == TARGET_CENTER_AND_WAIT && !timeLimited) {
+      return;
+    }
     vector3 targetPosition = getTargetPosition(target);
     vector3 deltaPosition = targetPosition.difference(position);
     double angleToTarget = atan2f(deltaPosition.x, deltaPosition.y) * RADIANS_TO_DEGREES;
@@ -486,7 +489,7 @@ unsigned long hex2dec(char hexChar) // this function is not mine
     return result;
 }
 
-double getHueFromRGB(std::string inputHex) {
+double getHueFromRGB(std::string inputHex) { // algorithm from someone on stackExchange idk
   double red = 16*(int)hex2dec(inputHex[1]) + (int)hex2dec(inputHex[2]);
   double green = 16*(int)hex2dec(inputHex[3]) + (int)hex2dec(inputHex[4]);
   double blue = 16*(int)hex2dec(inputHex[5]) + (int)hex2dec(inputHex[6]);
