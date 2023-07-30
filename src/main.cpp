@@ -640,26 +640,14 @@ void usercontrol(void) {
     // ..........................................................................
     // What I'm thinking for the manual loop:
     //
-    // I'm pretty sure all we're allowed to do here is move motors according to
-    // controller movements, so all I can write here are the button binds I want
+    // Either the below or just a continutation of auto control
     //
     // LEFT JOYSTICK
-    //   X: Large-scale forwards movement
-    //   Y: Large-scale turning
-    //
-    // RIGHT JOYSTICK
-    //   X: Fine-control turning
-    //   Y: Turret elevation control
+    //   X+Y: Directional control of the robot while not performing another action.
     //
     // LEFT BUMPERS
-    //   Top: Set shooter to expulsion.
-    //   Bottom: Set shooter to intake.
-    //
-    // RIGHT BUMPERS
-    //   Top: Push piston outward. Probably set to decay, so you just hold RB
-    //        until a ball comes out and it will slowly reset.
-    //   Bottom: Push piston inward. Pretty much just a way to make the natural
-    //           decay faster.
+    //   Top: Set robot to shooting mode. Robot will force-enter this mode if time is low or ball storage is full.
+    //   Bottom: Set robot to intake mode.
     // ..........................................................................
 
     wait(20, msec); // Sleep the task for a short amount of time to
