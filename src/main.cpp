@@ -11,6 +11,7 @@
 #include "iostream"
 #include <list>
 #include <chrono>
+#include <vector>
 
 using namespace vex;
 
@@ -24,9 +25,9 @@ const double G = -386.1; // 9.81 m/s but in inches/second^2
 const double WHEEL_WIDTH = 4;
 const double DRIVE_WHEEL_GEAR_RATIO = 5;
 const double ARM_WHEEL_GEAR_RATIO = 5;
-const double SHOOTER_WHEEL_GEAR_RATIO = 5;
+const double SHOOTER_WHEEL_GEAR_RATIO = 7;
 const double ARM_MOTOR_STRIKE_ANGLE = -35;
-const double SHOOTER_SPEED_MULTIPLIER = 1; // constant to multiply shooter motor rotation rate by after calculating its speed from equations, to account for error
+const double SHOOTER_SPEED_MULTIPLIER = 1.295; // constant to multiply shooter motor rotation rate by after calculating its speed from equations, to account for error
 
 class vector3 { // vectors in a more physical sense than c++'s default vectors
 
@@ -59,6 +60,29 @@ class vector3 { // vectors in a more physical sense than c++'s default vectors
   }
 };
 
+class Detection {
+  public:
+  int centerX;
+  int centerY;
+  int width;
+  int height;
+  int color;
+  Detection(int x, int y, int w, int h, int c) {
+    centerX = x;
+    centerY = y;
+    width = w;
+    height = h;
+    color = c;
+  }
+  Detection() {
+    centerX = 0;
+    centerY = 0;
+    width = 0;
+    height = 0;
+    color = 0;
+  }
+};
+
 // constant for the positions of key points, relative to the recalibration position
 int PLAYING_SIDE = 1; // -1 is left, 1 is right
 bool inTeleopPeriod = false;
@@ -85,23 +109,23 @@ const double TARGET_POINT_ALONG_TRAJECTORY = 0.6;
 
 // constants used for P-controller gain and other guidance
 
-const double TURNING_GAIN_FINE = 0.05;
-const double TURNING_GAIN_BROAD = 0.2;
+const double TURNING_GAIN_FINE = -0.3;
+const double TURNING_GAIN_BROAD = -0.5;
 const double COORDINATE_GUIDANCE_TURNING_GAIN = 0.3;
 const double COORDINATE_GUIDANCE_DISTANCE_GAIN = 10;
 const double MAX_DISTANCE_FROM_TARGET_NARROW = 1; // distance goal when driving to an objective
 const double MAX_DISTANCE_FROM_TARGET_BROAD = 5; // acceptable distance when deciding whether to drive to an objective
 const double MAX_ANGLE_FROM_TARGET = 1;
-const double BALL_GRAB_DISTANCE = 4;
+const double BALL_GRAB_DISTANCE = 6;
 
 // A global instance of vex::brain used for printing to the V5 brain screen
 vex::brain Brain;
 
 // setting motors
-motor motorLeft = motor(PORT1, ratio18_1, true);
-motor motorRight = motor(PORT10, ratio18_1, false);
-motor motorShooterL = motor(PORT11, ratio18_1, true);
-motor motorShooterR = motor(PORT12, ratio18_1, false);
+motor motorLeft = motor(PORT1, ratio18_1, false);
+motor motorRight = motor(PORT10, ratio18_1, true);
+motor motorShooterL = motor(PORT11, ratio18_1, false);
+motor motorShooterR = motor(PORT12, ratio18_1, true);
 motor motorArm = motor(PORT8, ratio18_1, false);
 motor motorPusher = motor(PORT13, ratio18_1, false);
 
@@ -109,13 +133,13 @@ motor motorPusher = motor(PORT13, ratio18_1, false);
 inertial IMU = inertial(PORT3);
 
 // setting camera color signatures and making a constant to be able to refer to color signatures by the object they detect rather than their signature number
-const int RED_BALL = 0;
-const int BLUE_BALL = 1;
-const int YELLOW_BALL = 2;
-const int RED_HOOP = 3;
-//const int BLUE_HOOP = 4;
-const int GREEN_INDICATOR = 5;
-const int YELLOW_INDICATOR = 6;
+const int RED_BALL = 1;
+const int BLUE_BALL = 2;
+const int YELLOW_BALL = 3;
+const int RED_HOOP = 4;
+//const int BLUE_HOOP = 5;
+const int GREEN_INDICATOR = 6;
+const int YELLOW_INDICATOR = 7;
 vex::vision::signature RED_BALL_SIG = vex::vision::signature(1, 10049, 11513, 10781, -425, 1, -212, 4.1, 0);
 vex::vision::signature BLUE_BALL_SIG = vex::vision::signature(2, -2427, -1747, -2087, 10357, 12053, 11205, 5, 0);
 vex::vision::signature YELLOW_BALL_SIG = vex::vision::signature(3, 2109, 2857, 2483, -3791, -3283, -3537, 4.7, 0);
@@ -123,23 +147,23 @@ vex::vision::signature RED_HOOP_SIG = vex::vision::signature(4, 7157, 7819, 7488
 vex::vision::signature BLUE_HOOP_SIG = vex::vision::signature(5, 0, 0, 0, 0, 0, 0, 3, 0); // blue hoops get detected as blue balls
 vex::vision::signature GREEN_INDICATOR_SIG = vex::vision::signature(6, -4647, -4369, -4508, -3549, -3157, -3353, 2.4, 0);
 vex::vision::signature YELLOW_INDICATOR_SIG = vex::vision::signature(7, -1699, 101, -799, -4119, -3775, -3947, 3, 0);
-vision camera = vision(PORT2, 50, RED_BALL_SIG, BLUE_BALL_SIG, YELLOW_BALL_SIG, RED_HOOP_SIG, BLUE_HOOP_SIG, GREEN_INDICATOR_SIG, YELLOW_INDICATOR_SIG);
-int CAMERA_PIXEL_WIDTH = 316;
-int CAMERA_PIXEL_HEIGHT = 212;
-int CAMERA_HORIZONTAL_FOV = 61;
-int CAMERA_VERTICAL_FOV = CAMERA_HORIZONTAL_FOV * (CAMERA_PIXEL_HEIGHT / CAMERA_PIXEL_WIDTH);
-double RADIANS_TO_DEGREES = 180/PI;
-double CAMERA_DEGREES_PER_PIXEL = CAMERA_PIXEL_WIDTH/CAMERA_HORIZONTAL_FOV;
-double CAMERA_RADIANS_PER_PIXEL = CAMERA_DEGREES_PER_PIXEL / RADIANS_TO_DEGREES;
-double WIDTH_BALL = 2.1;
-double WIDTH_HOOP = 0;
-double WIDTH_INDICATOR = 0;
+vision camera = vision(PORT15, 50, RED_BALL_SIG, BLUE_BALL_SIG, YELLOW_BALL_SIG, RED_HOOP_SIG, BLUE_HOOP_SIG, GREEN_INDICATOR_SIG, YELLOW_INDICATOR_SIG);
+const int CAMERA_PIXEL_WIDTH = 316;
+const int CAMERA_PIXEL_HEIGHT = 212;
+const int CAMERA_HORIZONTAL_FOV = 61;
+const int CAMERA_VERTICAL_FOV = CAMERA_HORIZONTAL_FOV * (CAMERA_PIXEL_HEIGHT / CAMERA_PIXEL_WIDTH);
+const double RADIANS_TO_DEGREES = 57.2957795131;
+const double CAMERA_DEGREES_PER_PIXEL = 0.193037974684;
+const double CAMERA_RADIANS_PER_PIXEL = 0.00336914823961;
+const double WIDTH_BALL = 2.1;
+const double WIDTH_HOOP = 0;
+const double WIDTH_INDICATOR = 0;
 
 // array for storage of currently held balls
-std::list<int> ballsHeld;
+std::vector<int> ballsHeld;
 
 // array for keeping track of the ball types of detected balls when they get combined into a multi-scan list
-std::list<int> BALL_TYPES;
+std::vector<int> BALL_TYPES;
 
 // boolean that can override the ball-search function in case time is low and it is a better idea to shoot existing low amounts of balls than to look for more balls
 bool timeLimited = false;
@@ -191,9 +215,11 @@ void calculatePosition() { // get global coordinates from motor speed and IMU he
   position.y += deltaDistance * sin(heading);
 }
 
-void driveForwardDistance(double distance, bool wait) {
+void driveForwardDistance(double distance, double speed, bool wait) {
     double motorAngle = DRIVE_WHEEL_GEAR_RATIO * distance / (WHEEL_WIDTH * PI);
-    motorLeft.spinFor(forward, motorAngle, rev, wait);
+    motorLeft.setVelocity(speed, pct);
+    motorRight.setVelocity(speed, pct);
+    motorLeft.spinFor(forward, motorAngle, rev, false);
     motorRight.spinFor(forward, motorAngle, rev, wait);
 }
 
@@ -207,11 +233,11 @@ void driveTurn(double angle, bool turnOnCenter, bool wait) {
     double wheelTravel = TRACKWIDTH * PI * rotations;
     double motorAngle = DRIVE_WHEEL_GEAR_RATIO * wheelTravel / (WHEEL_WIDTH * PI);
     if (turnOnCenter) {
-        motorLeft.spinFor(forward, motorAngle, rev, wait);
+        motorLeft.spinFor(forward, motorAngle, rev, false);
         motorRight.spinFor(reverse, motorAngle, rev, wait);
     } else {
         if (angle > 0) {
-            motorLeft.spinFor(forward, motorAngle*2, rev, wait);
+            motorLeft.spinFor(forward, motorAngle*2, rev, false);
         } else {
             motorRight.spinFor(reverse, motorAngle*2, rev, wait);
         }
@@ -294,7 +320,7 @@ void resetMotorAngle(motor m, double defaultAngle, vex::directionType dir) {
   m.stop();
   wait(50,msec);
   m.resetPosition();
-  m.spinTo(defaultAngle *(dir==forward?1:-1), deg, true);
+  m.spinTo(defaultAngle * (dir==forward?1:-1), deg, true);
   wait(50,msec);
   m.resetPosition();
 }
@@ -313,7 +339,7 @@ void resetIMU() {
   while(IMU.isCalibrating()) {
     wait(1, msec);
   }
-  position = vector3(0,0,0);
+  position = vector3(2,30,1);
   heading = 0;
   Brain.resetTimer();
 }
@@ -333,76 +359,133 @@ void setShooterDirection(vex::directionType direction) {
 }
 
 void setShooterSpeed(double velocity) { // sets shooter motors to spin at the right rate to reach a target speed in inches/second
-  double targetAngularSpeed = velocity / (WHEEL_WIDTH * SHOOTER_WHEEL_GEAR_RATIO); // shooter uses wheels, so this uses wheel width
+  double targetAngularSpeed = velocity / (0.5*WHEEL_WIDTH); // shooter uses wheels, so this uses wheel width
+  targetAngularSpeed *= 9.549297; // radians to rpm
+  targetAngularSpeed /= SHOOTER_WHEEL_GEAR_RATIO;
   targetAngularSpeed *= SHOOTER_SPEED_MULTIPLIER; // accounts for error
   motorShooterL.spin(forward, targetAngularSpeed, rpm);
   motorShooterR.spin(forward, targetAngularSpeed, rpm);
 }
 
-vex::vision::object getLargestObject(vex::vision::object* objects) {
+vex::vision::object getLargestObject(std::vector<vex::vision::object> objects) {
   int largestXSize = 0;
   vex::vision::object largestObject;
-  for (int i = 0; i < sizeof(objects); i++) {
-    if (objects[i].width > largestXSize) {
-      largestXSize = objects[i].width;
-      largestObject = objects[i];
+  for (int i = 0; i < objects.size(); i++) {
+    if (objects.at(i).width > largestXSize) {
+      largestXSize = objects.at(i).width;
+      largestObject = objects.at(i);
     }
   }
   return largestObject;
 }
 
-int getLargestObjectId(vex::vision::object* objects) {
+Detection getLargestObject(std::vector<Detection> objects) {
+  int largestXSize = 0;
+  Detection largestObject;
+  for (int i = 0; i < objects.size(); i++) {
+    if (objects.at(i).width > largestXSize) {
+      largestXSize = objects.at(i).width;
+      largestObject = objects.at(i);
+    }
+  }
+  return largestObject;
+}
+
+int getLargestObjectId(std::vector<Detection> objects) {
   int largestXSize = 0;
   int largestId = 0;
-  for (int i = 0; i < sizeof(objects); i++) {
-    if (objects[i].width > largestXSize) {
-      largestXSize = objects[i].width;
+  for (int i = 0; i < objects.size(); i++) {
+    if (objects.at(i).width > largestXSize) {
+      largestXSize = objects.at(i).width;
       largestId = i;
     }
   }
   return largestId;
 }
 
-int getLargestObjectPosX_SingleScan() {
-  return camera.largestObject.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
+int getLargestObjectPosX_SingleScan(vex::vision::object object) {
+  return object.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
 }
 
-int getLargestObjectPosX_MultipleScans(vex::vision::object* objects) {
+int getLargestObjectPosX_MultipleScans(std::vector<Detection> objects) {
   return getLargestObject(objects).centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
+}
+
+Detection getDetectionClosestTo(std::vector<Detection> objects, int x, int y) {
+  double lowestDistance = 9999999;
+  Detection closestObject;
+  for (int i = 0; i < objects.size(); i++) {
+    Detection object = objects.at(i);
+    int deltaX = object.centerX - x;
+    int deltaY = object.centerY - y;
+    double distance = vector3(deltaX, deltaY, 0).magnitude();
+    if (distance < lowestDistance) {
+      lowestDistance = distance;
+      closestObject = object;
+    }
+  }
+  return closestObject;
 }
 
 double getObjectDistance(int objectPixelWidth, double objectWidth) {
   double objectFullArcAngle = objectPixelWidth * CAMERA_RADIANS_PER_PIXEL;
-  double objectDistance = objectWidth / tan(objectFullArcAngle);
+  double objectDistance = objectWidth / tanf(objectFullArcAngle);
+  //printf("getObjectDistance diagnosis: pixelWidth:%d, objectWidth:%f, objectFullArcAngle:%f, objectDistance:%f, radiansPerPixel:%f, radiansToDegrees:%f\n", objectPixelWidth, objectWidth, objectFullArcAngle, objectDistance, CAMERA_RADIANS_PER_PIXEL, RADIANS_TO_DEGREES);
   return objectDistance;
 }
 
-double getLargestObjectDistance_SingleScan(double objectWidth) {
-  return getObjectDistance(camera.largestObject.width, objectWidth);
+double getLargestObjectDistance_SingleScan(vex::vision::object object, double objectWidth) {
+  return getObjectDistance(object.width, objectWidth);
 }
 
-double getLargestObjectDistance_MultipleScans(double objectWidth, vex::vision::object* objects) {
+double getLargestObjectDistance_MultipleScans(double objectWidth, std::vector<Detection> objects) {
   return getObjectDistance(getLargestObject(objects).width, objectWidth);
 }
 
-vex::vision::object* snapshotMultipleColors(int* colors) {
-  int size = 0;
-  int i = 0;
-  std::list<int> ballTypes;
-  for (int c = 0; c < sizeof(colors); c++) {
-    camera.takeSnapshot(colors[c]);
-    size += camera.objectCount;
+void printDetection(vex::vision::object obj) {
+  printf("X: %d Y: %d WIDTH: %d HEIGHT: %d\n", obj.centerX, obj.centerY, obj.width, obj.height);
+}
+
+void printDetection(Detection obj) {
+  printf("X: %d Y: %d WIDTH: %d HEIGHT: %d\n", obj.centerX, obj.centerY, obj.width, obj.height);
+}
+
+void printDetections(std::vector<vex::vision::object> objects) {
+  for (int i = 0; i < objects.size(); i++) {
+    vex::vision::object obj = objects.at(i);
+    printf("i: %d X: %d Y: %d WIDTH: %d HEIGHT: %d\n", i, obj.centerX, obj.centerY, obj.width, obj.height);
   }
-  vex::vision::object* combinedData = new vex::vision::object[size];
-  for (int c = 0; c < sizeof(colors); c++) {
-    camera.takeSnapshot(colors[c]);
+}
+
+void printDetections(std::vector<Detection> objects) {
+  for (int i = 0; i < objects.size(); i++) {
+    Detection obj = objects.at(i);
+    printf("i: %d X: %d Y: %d WIDTH: %d HEIGHT: %d COLOR: %d\n", i, obj.centerX, obj.centerY, obj.width, obj.height, obj.color);
+  }
+}
+
+Detection convertObject(vex::vision::object object, int color) {
+  return Detection(object.centerX, object.centerY, object.width, object.height, color);
+}
+
+std::vector<Detection> snapshotMultipleColors(std::vector<int> colors) {
+  std::vector<int> ballTypes;
+  std::vector<Detection> combinedData;
+  for (int c = 0; c < colors.size(); c++) {
+    camera.takeSnapshot(colors.at(c));
+    //printf("CAMERA DETECTIONS FOR COLOR %d:", colors.at(c));
+    //printDetection(camera.largestObject);
     for (int j = 0; j < camera.objectCount; j++) {
-      ballTypes.push_back(colors[c]);
-      combinedData[i] = camera.objects[j];
-      i++;
+      ballTypes.push_back(colors.at(c));
+      Detection obj = convertObject(camera.objects[j], colors.at(c));
+      //printf("CAMERA DETECTION %d:", j);
+      //printDetection(obj);
+      combinedData.push_back(obj); 
     }
   }
   BALL_TYPES = ballTypes;
+  //printf("CAMERA DETECTIONS FOR ALL COLORS\n");
+  //printDetections(combinedData);
   return combinedData;
 }
 
@@ -439,68 +522,80 @@ bool detectionAsBall_InPlayingSpace(vex::vision::object obj) {
   return ballPosition_InPlayingSpace(getDetectionPositionAsBall(obj));
 }
 
-vex::vision::object* filterDetectionsForValidBalls(vex::vision::object* input) {
-  std::list<vex::vision::object> validBalls;
-  for (int i = 0; i < sizeof(input); i++) {
-    if (detectionAsBall_InPlayingSpace(input[i])) {
-      validBalls.push_back(input[i]);
+std::vector<vex::vision::object> filterDetectionsForValidBalls(std::vector<vex::vision::object> input) {
+  std::vector<vex::vision::object> validBalls;
+  for (int i = 0; i < input.size(); i++) {
+    if (detectionAsBall_InPlayingSpace(input.at(i))) {
+      validBalls.push_back(input.at(i));
     }
   }
-  vex::vision::object validBallsArray[sizeof(validBalls)];
-  std::list<vex::vision::object>::iterator iter = validBalls.begin();
-  for (int i = 0; i < sizeof(validBalls); i++) {
-    validBallsArray[i] = *iter;
-    advance(iter, 1);
-  }
-  return validBallsArray;
+  return validBalls;
 }
 
 void getPlayingSide() {
-  PLAYING_SIDE = 1;
+  std::vector<Detection> yellowIndicatorDetections = snapshotMultipleColors(std::vector<int>(YELLOW_INDICATOR));
+  std::vector<Detection> greenIndicatorDetections = snapshotMultipleColors(std::vector<int>(GREEN_INDICATOR));
+  Detection yellowIndicator = getDetectionClosestTo(yellowIndicatorDetections, 0, 0);
+  Detection greenIndicator = getDetectionClosestTo(yellowIndicatorDetections, 0, 0);
+  PLAYING_SIDE = (yellowIndicator.centerX > greenIndicator.centerX) ? -1 : 1;
+}
+
+void applyPlayingSide() {
   RED_HOOP_POSITION.mirror(PLAYING_SIDE);
   BLUE_HOOP_POSITION.mirror(PLAYING_SIDE);
   CENTER_HOOP_POSITION.mirror(PLAYING_SIDE);
   YELLOW_BALL_HOLDER_POSITION.mirror(PLAYING_SIDE);
 }
 
+void printData(std::vector<int> data) {
+  for (int i = 0; i < data.size(); i++) {
+    printf("DATAPOINT %d: %d", i, data.at(i));
+  }
+}
+
 void yellowBallRun() { // The part of the auto script that runs towards the yellow ball at the beginning of the match
   // Shooter should already be set to intake mode from the setup phase.
   int ballDistance;
   // Angle turret to yellow-ball-grabbing height
-  setArmAngle(15);
+  //[ARM NOT ATTACHED] setArmAngle(15);
   // Align camera with largest yellow target and slam the throttle. Get to the yellow ball as fast as possible for the easy 10 points.
   do {
     camera.takeSnapshot(YELLOW_BALL);
-    ballDistance = getLargestObjectDistance_SingleScan(WIDTH_BALL);
-    double error = getLargestObjectPosX_SingleScan() * TURNING_GAIN_FINE;
-    driveCommand(30, error);
+    ballDistance = getLargestObjectDistance_SingleScan(camera.largestObject, WIDTH_BALL);
+    double error = getLargestObjectPosX_SingleScan(camera.largestObject) * TURNING_GAIN_FINE;
+    driveCommand(70, error);
+    printf("Ball distance: %d Error: %f\n", ballDistance, error);
+    wait(10, msec);
   } while (ballDistance > 5);
   // Reverse to around the starting position.
-  driveForwardDistance(5, true);
-  driveForwardDistance(-20, true);
+  driveForwardDistance(5, 100, true);
+  driveForwardDistance(-20, 100, true);
 }
 
 void ballSearch_GrabFoundBall() { // A preset motion that moves towards balls to pick them up
-  driveForwardDistance(5, true);
-  driveForwardDistance(-5, true);
+  driveForwardDistance(5, 50, true);
+  driveForwardDistance(-5, 50, true);
 }
 
-void ballSearch_GuidanceLoop(vex::vision::object* ballsDetected) { // The part of the ball-searching script that loops
+void ballSearch_GuidanceLoop(std::vector<Detection> ballsDetected) { // The part of the ball-searching script that loops
+  Detection ball = getLargestObject(ballsDetected);
   double distance = getLargestObjectDistance_MultipleScans(WIDTH_BALL, ballsDetected);
   //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
-  if ((sizeof(ballsDetected) > 0 || distance > 12) && !timeLimited) {
+  //if ((ballsDetected.size() > 0 || distance > 30) && !timeLimited) {
+  if (ballsDetected.size() == 0) {
     driveCommand(0, 20);
   } else {
     //   b. Align to ball, move towards ball until at edge of camera's visual range
     double error = getLargestObjectPosX_MultipleScans(ballsDetected) * TURNING_GAIN_BROAD;
     driveCommand(30, error);
+    printf(".");
     if (distance < BALL_GRAB_DISTANCE) {
       //   c. Preset ball-grab sequence since now blind
+      printf("Adding value %d to ballsHeld", ball.color);
+      ballsHeld.push_back(ball.color);
       ballSearch_GrabFoundBall();
+      printf("Ball grabbed");
       //   d. Keep track of held balls with a list
-      std::list<int>::iterator iter = BALL_TYPES.begin();
-      std::advance(iter, getLargestObjectId(ballsDetected));
-      ballsHeld.push_back(*iter);
     }
   }
 }
@@ -509,13 +604,15 @@ void searchForBalls() { // The part of the auto script that searches for balls w
   // Rev shooter to full/partial speed reverse
   setShooterDirection(forward);
   // threshold = number of balls we need to have loaded before we start shooting them.
-  int ballTypes[3] = {RED_BALL, BLUE_BALL, YELLOW_BALL};
-  vex::vision::object* ballsDetected = snapshotMultipleColors(ballTypes);
+  std::vector<int> ballTypes = {RED_BALL, BLUE_BALL, YELLOW_BALL};
+  std::vector<Detection> ballsDetected = snapshotMultipleColors(ballTypes);
 
   int BALL_THRESHOLD = 2;
   // While >0 balls seen, or ball count is below the threshold:
-  while (sizeof(ballsDetected) > 0 || sizeof(ballsHeld) < BALL_THRESHOLD) {
+  while (ballsDetected.size() > 0 || ballsHeld.size() < BALL_THRESHOLD) {
     ballSearch_GuidanceLoop(ballsDetected);
+    ballsDetected = snapshotMultipleColors(ballTypes);
+    wait(10, msec);
   }
 }
 
@@ -560,8 +657,8 @@ void resetPusherPosition() {
 
 void shootBalls() {
   // While >0 balls in clip:
-  while (sizeof(ballsHeld) > 0) {
-    int ball = *ballsHeld.end();
+  while (ballsHeld.size() > 0) {
+    int ball = ballsHeld.at(ballsHeld.size()-1);
     int target = getTargetHoop(ball);
     if (target == TARGET_CENTER_AND_WAIT && !timeLimited) {
       return;
@@ -686,10 +783,7 @@ void pre_auton(void) {
   reverseToWall();
   resetIMU();
   getPlayingSide();
-  // initialize list of held balls all to -1, meaning no ball
-  //for (int i = 0; i < sizeof(ballsHeld); i++) {
-  //  ballsHeld[i] = -1;
-  //}
+  printf("Playing side: %d", PLAYING_SIDE);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -799,40 +893,52 @@ int main() {
 
  /* ---------- CODE THAT TESTS FUNCTIONS LAZILY ---------- */
  int printValue = 0;
-  resetArmAngle(); // Good!
-  Brain.Screen.print("resetArmAngle() OK\n");
-  wait(3, sec);
-  setArmAngle(15); // Good!
-  Brain.Screen.print("setArmAngle(15) OK\n");
-  wait(3, sec);
-  setShooterDirection(forward); // Good!
-  Brain.Screen.print("setShooterDirection(forward) OK\n");
-  wait(3, sec);
-  camera.takeSnapshot(RED_BALL); // Good!
-  Brain.Screen.print("camera.takeSnapshot(RED_BALL) OK\n");
-  wait(3, sec);
-  Brain.Screen.print(getLargestObjectPosX_SingleScan());
-  Brain.Screen.print("getLargestObjectPosX_SingleScan() OK\n");
-  wait(3, sec);
-  Brain.Screen.print(getLargestObjectDistance_SingleScan(WIDTH_BALL));
-  Brain.Screen.print("getLargestObjectDistance_SingleScan(WIDTH_BALL) OK\n");
-  wait(3, sec);
-  int searchValues[3] = {RED_BALL, BLUE_BALL, YELLOW_BALL};
-  auto multipleDetection = snapshotMultipleColors(searchValues);
-  Brain.Screen.print("snapshotMultipleColors({RED_BALL, BLUE_BALL, YELLOW_BALL}) OK\n");
-  wait(3, sec);
-  Brain.Screen.print(getLargestObjectPosX_MultipleScans(multipleDetection));
-  Brain.Screen.print("getLargestObjectPosX_MultipleScans(multipleDetection) OK\n");
-  wait(3, sec);
-  Brain.Screen.print(getLargestObjectDistance_MultipleScans(WIDTH_BALL, multipleDetection));
-  Brain.Screen.print("getLargestObjectDistance_MultipleScans(WIDTH_BALL, multipleDetection) OK\n");
-  wait(3, sec);
-  yellowBallRun();
-  Brain.Screen.print("yellowBallRun() OK\n");
-  wait(3, sec);
+  //resetArmAngle(); // Good!
+  //Brain.Screen.print("resetArmAngle() OK\n");
+  //wait(3, sec);
+  //setArmAngle(15); // Good!
+  //Brain.Screen.print("setArmAngle(15) OK\n");
+  //wait(3, sec);
+  //setShooterSpeed(193); // Good!
+  //setShooterDirection(forward);
+  //Brain.Screen.print("setShooterDirection(forward) OK\n");
+  //wait(3, sec);
+  wait(5, sec);
+  getPlayingSide();
+  printf("------------------Playing side: %d\n", PLAYING_SIDE);
+  wait(1, sec);
+  //while(true) {
+  //camera.takeSnapshot(RED_BALL);
+  //printf("camera.takeSnapshot(RED_BALL) OK\n");
+  //Brain.Screen.newLine();
+  //printDetection(camera.largestObject);
+  //printf("Number of detections: %d\n", camera.objectCount);
+  //printf("%d ", getLargestObjectPosX_SingleScan(camera.largestObject));
+  //printf("getLargestObjectPosX_SingleScan() OK\n");
+  //wait(1, msec);
+  //printf("%f ", getLargestObjectDistance_SingleScan(camera.largestObject, WIDTH_BALL));
+  //printf("getLargestObjectDistance_SingleScan(WIDTH_BALL) OK (with width of %d)\n", camera.largestObject.width);
+  //wait(3, sec);
+  //printf("--------------------------------------\n");
+  //}
+  //std::vector<int> searchValues = {RED_BALL, BLUE_BALL, YELLOW_BALL};
+  //std::vector<Detection> multipleDetection = snapshotMultipleColors(searchValues);
+  //printf("snapshotMultipleColors({RED_BALL, BLUE_BALL, YELLOW_BALL}) OK\n");
+  //printDetections(multipleDetection);
+  //printf("g");
+  //wait(3, sec);
+  //printf("%d ", getLargestObjectPosX_MultipleScans(multipleDetection));
+  //printf("getLargestObjectPosX_MultipleScans(multipleDetection) OK\n");
+  //wait(3, sec);
+  //printf("%f ", getLargestObjectDistance_MultipleScans(WIDTH_BALL, multipleDetection));
+  //printf("getLargestObjectDistance_MultipleScans(WIDTH_BALL, multipleDetection) OK\n");
+  //wait(3, sec);
+  //yellowBallRun();
+  //printf("yellowBallRun() OK\n");
+  //wait(3, sec);
   searchForBalls();
-  Brain.Screen.print("searchForBalls() OK\n");
-  wait(3, sec);
-  printImage(); // Bad
-  Brain.Screen.print("printImage() OK\n");
+  printf("searchForBalls() OK\n");
+  //wait(3, sec);
+  //printImage(); // Bad
+  //printf("printImage() OK\n");
 }
