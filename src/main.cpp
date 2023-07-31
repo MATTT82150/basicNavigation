@@ -53,10 +53,14 @@ class vector3 { // vectors in a more physical sense than c++'s default vectors
   vector3 add(vector3 v) {
     return vector3(x+v.x, y+v.y, z+v.z);
   }
+
+  void mirror(int playingSide) {
+    x *= playingSide;
+  }
 };
 
 // constant for the positions of key points, relative to the recalibration position
-const double PLAYING_SIDE = 1; // -1 is left, 1 is right
+int PLAYING_SIDE = 1; // -1 is left, 1 is right
 bool inTeleopPeriod = false;
 const int TARGET_CENTER_AND_WAIT = -1;
 const int TARGET_RED_HOOP = 0;
@@ -66,10 +70,10 @@ const int TARGET_YELLOW_BALL_HOLDER = 3;
 // Positions of various targets.
 // Vectors are in (forward, right, up) format.
 // All court-object position vectors are relative to the centerline of the court, touching the back end.
-const vector3 RED_HOOP_POSITION = vector3(74, 39.5, 27.5);
-const vector3 BLUE_HOOP_POSITION = vector3(74, 24, 17);
-const vector3 CENTER_HOOP_POSITION = vector3(74, 0, 26);
-const vector3 YELLOW_BALL_HOLDER_POSITION = vector3(74, 39.5, 10);
+vector3 RED_HOOP_POSITION = vector3(74, 39.5, 27.5);
+vector3 BLUE_HOOP_POSITION = vector3(74, 24, 17);
+vector3 CENTER_HOOP_POSITION = vector3(74, 0, 26);
+vector3 YELLOW_BALL_HOLDER_POSITION = vector3(74, 39.5, 10);
 //
 const vector3 TURRET_GIMBAL_POSITION = vector3(-0.2, 0, 1);
 const vector3 CAMERA_RELATIVE_TO_TURRET_GIMBAL_POSITION = vector3(5, 0, 1); 
@@ -451,6 +455,14 @@ vex::vision::object* filterDetectionsForValidBalls(vex::vision::object* input) {
   return validBallsArray;
 }
 
+void getPlayingSide() {
+  PLAYING_SIDE = 1;
+  RED_HOOP_POSITION.mirror(PLAYING_SIDE);
+  BLUE_HOOP_POSITION.mirror(PLAYING_SIDE);
+  CENTER_HOOP_POSITION.mirror(PLAYING_SIDE);
+  YELLOW_BALL_HOLDER_POSITION.mirror(PLAYING_SIDE);
+}
+
 void yellowBallRun() { // The part of the auto script that runs towards the yellow ball at the beginning of the match
   // Shooter should already be set to intake mode from the setup phase.
   int ballDistance;
@@ -673,6 +685,7 @@ void pre_auton(void) {
   // calibrate the position + rotation by reversing back to the wall and resetting the IMU's position
   reverseToWall();
   resetIMU();
+  getPlayingSide();
   // initialize list of held balls all to -1, meaning no ball
   //for (int i = 0; i < sizeof(ballsHeld); i++) {
   //  ballsHeld[i] = -1;
@@ -785,21 +798,41 @@ int main() {
   */
 
  /* ---------- CODE THAT TESTS FUNCTIONS LAZILY ---------- */
-  //resetArmAngle(); // Good!
-  //wait(1,sec);
-  //setArmAngle(15); // Good!
-  //wait(1,sec);
-  //setShooterDirection(forward); // Good!
-  //wait(1,sec);
-  //camera.takeSnapshot(RED_BALL);
-  //wait(1,sec);
-  //getLargestObjectPosX_SingleScan();
-  //wait(1,sec);
-  //getLargestObjectDistance_SingleScan(WIDTH_BALL);
-  //wait(1,sec);
-  //yellowBallRun();
-  //wait(1,sec);
-  //searchForBalls();
-  //wait(1,sec);
-  //printImage(); // Bad
+ int printValue = 0;
+  resetArmAngle(); // Good!
+  Brain.Screen.print("resetArmAngle() OK\n");
+  wait(3, sec);
+  setArmAngle(15); // Good!
+  Brain.Screen.print("setArmAngle(15) OK\n");
+  wait(3, sec);
+  setShooterDirection(forward); // Good!
+  Brain.Screen.print("setShooterDirection(forward) OK\n");
+  wait(3, sec);
+  camera.takeSnapshot(RED_BALL); // Good!
+  Brain.Screen.print("camera.takeSnapshot(RED_BALL) OK\n");
+  wait(3, sec);
+  Brain.Screen.print(getLargestObjectPosX_SingleScan());
+  Brain.Screen.print("getLargestObjectPosX_SingleScan() OK\n");
+  wait(3, sec);
+  Brain.Screen.print(getLargestObjectDistance_SingleScan(WIDTH_BALL));
+  Brain.Screen.print("getLargestObjectDistance_SingleScan(WIDTH_BALL) OK\n");
+  wait(3, sec);
+  int searchValues[3] = {RED_BALL, BLUE_BALL, YELLOW_BALL};
+  auto multipleDetection = snapshotMultipleColors(searchValues);
+  Brain.Screen.print("snapshotMultipleColors({RED_BALL, BLUE_BALL, YELLOW_BALL}) OK\n");
+  wait(3, sec);
+  Brain.Screen.print(getLargestObjectPosX_MultipleScans(multipleDetection));
+  Brain.Screen.print("getLargestObjectPosX_MultipleScans(multipleDetection) OK\n");
+  wait(3, sec);
+  Brain.Screen.print(getLargestObjectDistance_MultipleScans(WIDTH_BALL, multipleDetection));
+  Brain.Screen.print("getLargestObjectDistance_MultipleScans(WIDTH_BALL, multipleDetection) OK\n");
+  wait(3, sec);
+  yellowBallRun();
+  Brain.Screen.print("yellowBallRun() OK\n");
+  wait(3, sec);
+  searchForBalls();
+  Brain.Screen.print("searchForBalls() OK\n");
+  wait(3, sec);
+  printImage(); // Bad
+  Brain.Screen.print("printImage() OK\n");
 }
