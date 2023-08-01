@@ -27,7 +27,7 @@ const double DRIVE_WHEEL_GEAR_RATIO = 5;
 const double ARM_WHEEL_GEAR_RATIO = 5;
 const double SHOOTER_WHEEL_GEAR_RATIO = 7;
 const double ARM_MOTOR_STRIKE_ANGLE = -35;
-const double SHOOTER_SPEED_MULTIPLIER = 1.295; // constant to multiply shooter motor rotation rate by after calculating its speed from equations, to account for error
+const double SHOOTER_SPEED_MULTIPLIER = 1.317; // constant to multiply shooter motor rotation rate by after calculating its speed from equations, to account for error
 
 class vector3 { // vectors in a more physical sense than c++'s default vectors
 
@@ -109,14 +109,16 @@ const double TARGET_POINT_ALONG_TRAJECTORY = 0.6;
 
 // constants used for P-controller gain and other guidance
 
-const double TURNING_GAIN_FINE = -0.3;
-const double TURNING_GAIN_BROAD = -0.5;
+const double TURNING_GAIN_FINE = -1;
+const double TURNING_GAIN_BROAD = -1.5;
+const double FORWARD_GAIN = 30;
 const double COORDINATE_GUIDANCE_TURNING_GAIN = 0.3;
 const double COORDINATE_GUIDANCE_DISTANCE_GAIN = 10;
 const double MAX_DISTANCE_FROM_TARGET_NARROW = 1; // distance goal when driving to an objective
 const double MAX_DISTANCE_FROM_TARGET_BROAD = 5; // acceptable distance when deciding whether to drive to an objective
-const double MAX_ANGLE_FROM_TARGET = 1;
-const double BALL_GRAB_DISTANCE = 6;
+const double MAX_ANGLE_FROM_BALL = 1;
+const double MAX_ANGLE_FROM_HOOP = 1;
+const double MAX_DISTANCE_FROM_BALL = 6;
 
 // A global instance of vex::brain used for printing to the V5 brain screen
 vex::brain Brain;
@@ -276,6 +278,18 @@ void driveGlobal(vector3 positionDesired, double angle) { // turns and drives to
   } while (headingError > MAX_ANGLE_FROM_TARGET);
 }
 
+void recalibrate() {
+  driveGlobal()
+}
+
+double getYPositionFromIndicators() {
+  std::vector<Detection> yellowIndicatorDetections = snapshotMultipleColors(std::vector<int>(YELLOW_INDICATOR));
+  std::vector<Detection> greenIndicatorDetections = snapshotMultipleColors(std::vector<int>(GREEN_INDICATOR));
+  Detection yellowIndicator = getDetectionClosestTo(yellowIndicatorDetections, 0, 0);
+  Detection greenIndicator = getDetectionClosestTo(yellowIndicatorDetections, 0, 0);
+  
+}
+
 shooterInputs calculateShotAngleAndVelocity(vector3 targetPosition) {
   double distanceX = sqrtf((targetPosition.x - position.x)*(targetPosition.x - position.x) + (targetPosition.y - position.y)*(targetPosition.y - position.y));
   double distanceY = targetPosition.z;
@@ -404,11 +418,11 @@ int getLargestObjectId(std::vector<Detection> objects) {
 }
 
 int getLargestObjectPosX_SingleScan(vex::vision::object object) {
-  return object.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
+  return object.centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0 - CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
 }
 
 int getLargestObjectPosX_MultipleScans(std::vector<Detection> objects) {
-  return getLargestObject(objects).centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0-CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
+  return getLargestObject(objects).centerX - CAMERA_PIXEL_WIDTH*0.5; // X is normally based on 0 - CAMERA_PIXEL_WIDTH, but this adjusts it so centered = 0
 }
 
 Detection getDetectionClosestTo(std::vector<Detection> objects, int x, int y) {
@@ -556,11 +570,19 @@ void printData(std::vector<int> data) {
 void yellowBallRun() { // The part of the auto script that runs towards the yellow ball at the beginning of the match
   // Shooter should already be set to intake mode from the setup phase.
   int ballDistance;
+  int yellowBallFails = 0;
+  int YELLOW_BALL_MAX_FAILS = 100;
   // Angle turret to yellow-ball-grabbing height
   //[ARM NOT ATTACHED] setArmAngle(15);
   // Align camera with largest yellow target and slam the throttle. Get to the yellow ball as fast as possible for the easy 10 points.
   do {
     camera.takeSnapshot(YELLOW_BALL);
+    if (camera.objectCount == 0) {
+      yellowBallFails++;
+    }
+    if (yellowBallFails > YELLOW_BALL_MAX_FAILS) {
+      return;
+    }
     ballDistance = getLargestObjectDistance_SingleScan(camera.largestObject, WIDTH_BALL);
     double error = getLargestObjectPosX_SingleScan(camera.largestObject) * TURNING_GAIN_FINE;
     driveCommand(70, error);
@@ -568,13 +590,13 @@ void yellowBallRun() { // The part of the auto script that runs towards the yell
     wait(10, msec);
   } while (ballDistance > 5);
   // Reverse to around the starting position.
-  driveForwardDistance(5, 100, true);
-  driveForwardDistance(-20, 100, true);
+  driveForwardDistance(8, 50, true);
+  driveForwardDistance(-12, 100, true);
 }
 
 void ballSearch_GrabFoundBall() { // A preset motion that moves towards balls to pick them up
-  driveForwardDistance(5, 50, true);
-  driveForwardDistance(-5, 50, true);
+  driveForwardDistance(8, 50, true);
+  driveForwardDistance(-12, 100, true);
 }
 
 void ballSearch_GuidanceLoop(std::vector<Detection> ballsDetected) { // The part of the ball-searching script that loops
@@ -586,10 +608,12 @@ void ballSearch_GuidanceLoop(std::vector<Detection> ballsDetected) { // The part
     driveCommand(0, 20);
   } else {
     //   b. Align to ball, move towards ball until at edge of camera's visual range
-    double error = getLargestObjectPosX_MultipleScans(ballsDetected) * TURNING_GAIN_BROAD;
-    driveCommand(30, error);
+    double errorTurning = getLargestObjectPosX_MultipleScans(ballsDetected) * TURNING_GAIN_BROAD;
+    double angle = abs(getLargestObjectPosX_MultipleScans(ballsDetected) * CAMERA_DEGREES_PER_PIXEL);
+    double errorForward = (distance - MAX_DISTANCE_FROM_BALL*0.7) * FORWARD_GAIN;
+    driveCommand(errorForward, errorTurning);
     printf(".");
-    if (distance < BALL_GRAB_DISTANCE) {
+    if (distance < MAX_DISTANCE_FROM_BALL && angle < MAX_ANGLE_FROM_BALL) {
       //   c. Preset ball-grab sequence since now blind
       printf("Adding value %d to ballsHeld", ball.color);
       ballsHeld.push_back(ball.color);
@@ -607,7 +631,7 @@ void searchForBalls() { // The part of the auto script that searches for balls w
   std::vector<int> ballTypes = {RED_BALL, BLUE_BALL, YELLOW_BALL};
   std::vector<Detection> ballsDetected = snapshotMultipleColors(ballTypes);
 
-  int BALL_THRESHOLD = 2;
+  int BALL_THRESHOLD = 4;
   // While >0 balls seen, or ball count is below the threshold:
   while (ballsDetected.size() > 0 || ballsHeld.size() < BALL_THRESHOLD) {
     ballSearch_GuidanceLoop(ballsDetected);
@@ -668,8 +692,9 @@ void shootBalls() {
     vector3 targetPosition = getTargetPosition(target);
     vector3 deltaPosition = targetPosition.difference(position);
     double angleToTarget = atan2f(deltaPosition.x, deltaPosition.y) * RADIANS_TO_DEGREES;
-    if (position.difference(vector3(0,20,0)).magnitude() > MAX_DISTANCE_FROM_TARGET_BROAD) {
-      driveGlobal(vector3(0, 20, 0), angleToTarget);
+    vector3 driveSpot = vector3(20, 30, 0);
+    if (position.difference(driveSpot).magnitude() > MAX_DISTANCE_FROM_TARGET_BROAD) {
+      driveGlobal(driveSpot, angleToTarget);
     }
     // c. Calculate hoop distance based off of vertical+horizontal size in camera's FOV and known vertical distance
     // d. Calculate necessary turret angle + shooter spinrate based off of math
@@ -703,7 +728,7 @@ unsigned long hex2dec(char hexChar) // this function is not mine
 }
 
 double getHueFromRGB(std::string inputHex) { // algorithm from someone on stackExchange idk
-  double red = 16*(int)hex2dec(inputHex[1]) + (int)hex2dec(inputHex[2]);
+  /*double red = 16*(int)hex2dec(inputHex[1]) + (int)hex2dec(inputHex[2]);
   double green = 16*(int)hex2dec(inputHex[3]) + (int)hex2dec(inputHex[4]);
   double blue = 16*(int)hex2dec(inputHex[5]) + (int)hex2dec(inputHex[6]);
   red /= 255;
@@ -723,6 +748,9 @@ double getHueFromRGB(std::string inputHex) { // algorithm from someone on stackE
   else {hue = 4 + (red-green);}
   hue *= 60/(max-min);
   if (hue < 0) {hue += 360;}
+  return hue;*/
+  double red = 16*(int)hex2dec(inputHex[1]) + (int)hex2dec(inputHex[2]);
+  double hue = red * (100/(double)256);
   return hue;
 }
 
@@ -735,7 +763,7 @@ char* intToChar(int value) {
 void printImage() {
   for (int x = 0; x < 480; x++) {
     for (int y = 0; y < 272; y++) {
-      int i = (272/IMAGE_PIXEL_RATIO)*(x/IMAGE_PIXEL_RATIO) + (y/IMAGE_PIXEL_RATIO);
+      long i = (272/IMAGE_PIXEL_RATIO)*(x/IMAGE_PIXEL_RATIO) + (y/IMAGE_PIXEL_RATIO);
       i *= 6;
       /*char* hexColor = "#      ";
       for (int j = 0; j < 6; j++) {
@@ -750,10 +778,11 @@ void printImage() {
         hueColor = 180;
       }
       hueColor = getHueFromRGB(hexColor);
+      //hueColor = 100 + x - y;
       Brain.Screen.setPenColor(hueColor);
-      Brain.Screen.drawPixel(x, y);
-      printf("%s",hexColor.c_str());
-      printf("%s\n",intToChar(hueColor));
+      Brain.Screen.drawPixel(x,y);
+      //printf("%s",hexColor.c_str());
+      //printf("%s\n",intToChar(hueColor));
     }
   }
 }
@@ -904,9 +933,9 @@ int main() {
   //Brain.Screen.print("setShooterDirection(forward) OK\n");
   //wait(3, sec);
   wait(5, sec);
-  getPlayingSide();
-  printf("------------------Playing side: %d\n", PLAYING_SIDE);
-  wait(1, sec);
+  //getPlayingSide();
+  //printf("------------------Playing side: %d\n", PLAYING_SIDE);
+  //wait(1, sec);
   //while(true) {
   //camera.takeSnapshot(RED_BALL);
   //printf("camera.takeSnapshot(RED_BALL) OK\n");
