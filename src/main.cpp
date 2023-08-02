@@ -9,9 +9,12 @@
 #include "vex.h"
 #include "math.h"
 #include "iostream"
+#include <string.h>
+#include <fstream>
 #include <list>
 #include <chrono>
 #include <vector>
+#include <sstream>
 
 using namespace vex;
 
@@ -111,7 +114,7 @@ vector3 BLUE_HOOP_POSITION = vector3(74, 24, 17);
 vector3 CENTER_HOOP_POSITION = vector3(74, 0, 26);
 vector3 YELLOW_BALL_HOLDER_POSITION = vector3(74, 39.5, 10);
 vector3 INDICATOR_POSITION = vector3(74, 24, 10);
-vector3 CORNER_POSITION = vector3(5, 5, -10);
+vector3 CORNER_POSITION = vector3(15, 50-15, 10);
 //
 vector3 TURRET_GIMBAL_POSITION = vector3(-0.2, 0, 1);
 vector3 CAMERA_RELATIVE_TO_TURRET_GIMBAL_POSITION = vector3(5, 0, 1); 
@@ -124,13 +127,13 @@ const double TARGET_POINT_ALONG_TRAJECTORY = 0.6;
 // constants used for P-controller gain and other guidance
 
 const double TURNING_GAIN_FINE = -0.5;
-const double TURNING_GAIN_BROAD = -0.7;
+const double TURNING_GAIN_BROAD = -0.1;
 const double FORWARD_GAIN = 30;
 const double COORDINATE_GUIDANCE_TURNING_GAIN = -5;
-const double COORDINATE_GUIDANCE_DISTANCE_GAIN = 1;
+const double COORDINATE_GUIDANCE_DISTANCE_GAIN = 5;
 const double MAX_DISTANCE_FROM_TARGET_NARROW = 10; // distance goal when driving to an objective
 const double MAX_DISTANCE_FROM_TARGET_BROAD = 5; // acceptable distance when deciding whether to drive to an objective
-const double MAX_ANGLE_FROM_BALL = 1;
+const double MAX_ANGLE_FROM_BALL = 10;
 const double MAX_ANGLE_FROM_HOOP = 1;
 const double MAX_DISTANCE_FROM_BALL = 6;
 
@@ -218,16 +221,84 @@ void printPosition() {
   printf("heading: %f\n", getHeading());
 }
 
+template <typename T>
+std::string to_string(T value)
+{
+    std::ostringstream os ;
+    os << value ;
+    return os.str() ;
+}
+
+void printPositionToFile() {
+  std::ofstream fileWriter;
+  fileWriter.open("C:\\vexoutput.txt",std::ofstream::out | std::ofstream::trunc);
+  std::string output1 = to_string(position.x);
+  std::string output2 = to_string(position.y);
+  std::string output3 = to_string(getHeading());
+  fileWriter << (output1 + "\n");
+  fileWriter << (output2 + "\n");
+  fileWriter << (output3 + "\n");
+  fileWriter.close();
+}
+
+void drawRect(double x0, double y0, double x1, double y1, int red, int green, int blue) {
+  int SCALE = 1;
+  int WIDTH = 480;
+  int HEIGHT = 272;
+  x0 *= SCALE;
+  x1 *= SCALE;
+  y0 *= SCALE;
+  y1 *= SCALE;
+  x0 += WIDTH*0.5;
+  y0 += HEIGHT*0.5;
+  color c = color(red, green, blue);
+  Brain.Screen.setFillColor(c);
+  Brain.Screen.drawRectangle(x0, y0, x1, y1);
+}
+
+void drawCircle(double x0, double y0, double radius, int red, int green, int blue) {
+  int SCALE = 1;
+  int WIDTH = 480;
+  int HEIGHT = 272;
+  x0 *= SCALE;
+  y0 *= SCALE;
+  radius *= SCALE;
+  x0 += WIDTH*0.5;
+  y0 += HEIGHT*0.5;
+  color c = color(red, green, blue);
+  Brain.Screen.setFillColor(c);
+  Brain.Screen.drawCircle(x0, y0, radius);
+}
+
+void printPositionToScreen() {
+  Brain.Screen.clearScreen();
+  drawRect(0, 0, 98, 72, 80, 80, 80);
+  drawRect(0, 36.5, 100, 1, 100, 70, 0);
+  drawRect(0, -36.5, 100, 1, 127, 127, 255);
+  drawRect(49.5, 0, 1, 74, 100, 70, 0);
+  drawRect(-49.5, 0, 1, 74, 100, 70, 0);
+  drawRect(0, -0.5*72+0.5*(72-26.5), 25, (72-26.5), 150, 150, 180);
+  drawRect(0, 18, 98, 2, 200, 200, 200);
+  drawRect(0, 22.75, 2, 26.5, 200, 200, 200);
+  drawRect(-39.5, 0, 2, 72, 200, 200, 200);
+  drawRect(39.5, 0, 2, 72, 200, 200, 200);
+  drawCircle(position.x, position.y, 11, 127, 0, 0);
+  double yawRotated = getHeading()-90;
+  dx = cos(yawRotated/57.3);
+  dy = sin(yawRotated/57.3);
+  drawCircle(position.x + 9*dx, position.y + 9*dy, 2, 255, 0, 0);
+}
+
 void updatePosition() { // get global coordinates from motor speed and IMU heading
   double currentTime = Brain.timer(msec);
   double deltaTime = currentTime - previousTime;
   deltaTime /= 1000;
   previousTime = currentTime;
 
-  Brain.Screen.clearScreen();
-  Brain.Screen.setCursor(1,1);
-  Brain.Screen.print("deltaTime: ");
-  Brain.Screen.print(deltaTime);
+  //Brain.Screen.clearScreen();
+  //Brain.Screen.setCursor(1,1);
+  //Brain.Screen.print("deltaTime: ");
+  //Brain.Screen.print(deltaTime);
 
   double motorForwardAngularSpeed = 0.5 * (motorLeft.velocity(dps) + motorRight.velocity(dps)) / RADIANS_TO_DEGREES; // forwards speed is the average velocity of the two wheels
   double forwardSpeed = motorForwardAngularSpeed * WHEEL_WIDTH/2 / DRIVE_WHEEL_GEAR_RATIO; // get inches/second speed from motor rotation rate
@@ -241,6 +312,8 @@ void updatePosition() { // get global coordinates from motor speed and IMU headi
   position.y += deltaDistance * sin(heading);
 
   printPosition();
+  printPositionToFile();
+  printPositionToScreen();
 
   wait(50, msec); // hehe
 }
@@ -366,7 +439,7 @@ void resetMotorAngle(motor m, double strikeAngle, vex::directionType dir) {
   m.stop();
   wait(50,msec);
   m.resetPosition();
-  m.spinTo(defaultAngle * (dir==forward?1:-1), deg, true);
+  m.spinTo(strikeAngle * (dir==forward?1:-1), deg, true);
   wait(50,msec);
   m.resetPosition();
 }
@@ -386,7 +459,7 @@ void resetPosition() {
   while(IMU.isCalibrating()) {
     wait(1, msec);
   }
-  position = vector3(2,30*PLAYING_SIDE,1);
+  position = vector3(6,30*PLAYING_SIDE,1);
   printPosition();
   Brain.resetTimer();
   previousTime = 0;
@@ -480,6 +553,7 @@ double getObjectDistance(int objectPixelWidth, double objectWidth) {
   double objectFullArcAngle = objectPixelWidth * CAMERA_RADIANS_PER_PIXEL;
   double objectDistance = objectWidth / tanf(objectFullArcAngle);
   //printf("getObjectDistance diagnosis: pixelWidth:%d, objectWidth:%f, objectFullArcAngle:%f, objectDistance:%f, radiansPerPixel:%f, radiansToDegrees:%f\n", objectPixelWidth, objectWidth, objectFullArcAngle, objectDistance, CAMERA_RADIANS_PER_PIXEL, RADIANS_TO_DEGREES);
+  //objectDistance += TURRET_GIMBAL_POSITION.add(CAMERA_RELATIVE_TO_TURRET_GIMBAL_POSITION).x;
   return objectDistance;
 }
 
@@ -546,20 +620,29 @@ vector3 rotateVectorByAzimuthAndElevation(vector3 v, double azimuth, double elev
   return v3;
 }
 
-vector3 getDetectionPositionAsBall(Detection obj) { // get the worldspace position
+vector3 getDetectionPositionAsBall_OLD(Detection obj) { // get the worldspace position
   double distance = getObjectDistance(obj.width, WIDTH_BALL);
   distance += 0.5*WIDTH_BALL;
   double azimuth = (obj.centerX - 0.5*CAMERA_PIXEL_WIDTH) * CAMERA_DEGREES_PER_PIXEL;
   double elevation = (obj.centerY - 0.5*CAMERA_PIXEL_HEIGHT) * CAMERA_DEGREES_PER_PIXEL;
-  vector3 ballPosition_TurretspaceRelativeToCamera = rotateVectorByAzimuthAndElevation(vector3(distance, 0, 0), azimuth, elevation);
+  vector3 ballPosition_TurretspaceRelativeToCamera = rotateVectorByAzimuthAndElevation(vector3(distance, 0, 0), -azimuth, -elevation);
   vector3 ballPosition_TurretspaceRelativeToGimbal = ballPosition_TurretspaceRelativeToCamera.difference(CAMERA_RELATIVE_TO_TURRET_GIMBAL_POSITION);
   vector3 ballPosition_Vehiclespace = rotateVectorByAzimuthAndElevation(ballPosition_TurretspaceRelativeToGimbal, 0, -getArmAngle()).difference(TURRET_GIMBAL_POSITION);
   vector3 ballPosition = rotateVectorByAzimuthAndElevation(ballPosition_Vehiclespace, -getHeading(), 0).add(position);
   return ballPosition;
 }
 
+vector3 getDetectionPositionAsBall(Detection obj) { // heavily simplified verison of the function above because it wasnt working
+  double distance = getObjectDistance(obj.width, WIDTH_BALL);
+  double azimuth = (obj.centerX - 0.5*CAMERA_PIXEL_WIDTH) * CAMERA_DEGREES_PER_PIXEL;
+  azimuth += getHeading();
+  azimuth /= RADIANS_TO_DEGREES;
+  vector3 ballPosition = vector3(distance * cos(azimuth), distance * sin(azimuth), 1);
+  return ballPosition;
+}
+
 bool ballPosition_InPlayingSpace(vector3 v) {
-  vector3 buffer = vector3(5, 5, 2); // Amount past the course dimensions we are willing to take
+  vector3 buffer = vector3(-3, -3, 10); // Amount past the course dimensions we are willing to take
   double rampAvoidDistance = 3;
   if (v.x < -buffer.x) { return false; } // ball would be behind court
   if (v.x > 74 + buffer.x) { return false; } // ball would be behind wall
@@ -573,10 +656,24 @@ bool detectionAsBall_InPlayingSpace(Detection obj) {
   return ballPosition_InPlayingSpace(getDetectionPositionAsBall(obj));
 }
 
+bool detectionAsBall_GoodY(Detection obj) {
+  /*double elevation = (obj.centerY - 0.5*CAMERA_PIXEL_HEIGHT) * CAMERA_DEGREES_PER_PIXEL;
+  elevation += getArmAngle();
+  if (elevation < 30) {
+    return false;
+  }
+  return true;*/
+  if (obj.centerY > CAMERA_PIXEL_HEIGHT*0.6) {
+    return true;
+  }
+  return false;
+}
+
 std::vector<Detection> filterDetectionsForValidBalls(std::vector<Detection> input) {
   std::vector<Detection> validBalls;
   for (int i = 0; i < input.size(); i++) {
-    if (detectionAsBall_InPlayingSpace(input.at(i))) {
+    //if (detectionAsBall_InPlayingSpace(input.at(i))) {
+    if (detectionAsBall_GoodY(input.at(i))) {
       validBalls.push_back(input.at(i));
     }
   }
@@ -648,6 +745,22 @@ void printData(std::vector<int> data) {
   }
 }
 
+vex::color colorOfDetectionType(int i) {
+  switch(i) {
+    case 1: return vex::color::red;
+    case 2: return vex::color::blue;
+    case 3: return vex::color::yellow;
+  }
+  return vex::color::white;
+}
+
+void printDetectionsOntoScreen(std::vector<Detection> objects, int color) {
+  for (int i = 0; i < objects.size(); i++) {
+    Detection o = objects.at(i);
+    Brain.Screen.drawRectangle(o.centerX-0.5*o.width, o.centerY-0.5*o.height, o.width, o.height, colorOfDetectionType(color));
+  }
+}
+
 void yellowBallRun() { // The part of the auto script that runs towards the yellow ball at the beginning of the match
   // Shooter should already be set to intake mode from the setup phase.
   int ballDistance;
@@ -687,13 +800,17 @@ void ballSearch_GrabFoundBall() { // A preset motion that moves towards balls to
 void ballSearch_GuidanceLoop(std::vector<Detection> ballsDetected) { // The part of the ball-searching script that loops
   Detection ball = getLargestObject(ballsDetected);
   double distance = getLargestObjectDistance_MultipleScans(WIDTH_BALL, ballsDetected);
+  double posX = getLargestObjectPosX_MultipleScans(ballsDetected);
   //   a. Check FOV for balls. If ball count is below the threshold, reverse/look around until one is found.
   //if ((ballsDetected.size() > 0 || distance > 30) && !timeLimited) {
   if (ballsDetected.size() != 0 && distance < 30) {
     //   b. Align to ball, move towards ball until at edge of camera's visual range
-    double errorTurning = getLargestObjectPosX_MultipleScans(ballsDetected) * TURNING_GAIN_BROAD;
-    double angle = fabs(getLargestObjectPosX_MultipleScans(ballsDetected) * CAMERA_DEGREES_PER_PIXEL);
+    double errorTurning = posX * TURNING_GAIN_BROAD * distance;
+    double angle = fabs(posX * CAMERA_DEGREES_PER_PIXEL);
     double errorForward = (distance - MAX_DISTANCE_FROM_BALL*0.7) * FORWARD_GAIN;
+    double speedMultiplier = fmax(90-angle, 0)/90;
+    errorForward *= speedMultiplier;
+    errorForward = fmin(errorForward, 70);
     driveCommand(errorForward, errorTurning);
     printf(".");
     if (distance < MAX_DISTANCE_FROM_BALL && angle < MAX_ANGLE_FROM_BALL) {
@@ -705,7 +822,19 @@ void ballSearch_GuidanceLoop(std::vector<Detection> ballsDetected) { // The part
       //   d. Keep track of held balls with a list
     }
   } else {
-    driveCommand(0, 20);
+    driveCommand(0, 100);
+  }
+}
+
+void printBallCoordinates(std::vector<Detection> balls) {
+  for (int i = 0; i < balls.size(); i++) {
+    vector3 ballPosition = getDetectionPositionAsBall(balls.at(i));
+    printf("Ball %d: {%f, %f, %f} with color %d\n", i, ballPosition.x, ballPosition.y, ballPosition.z, balls.at(i).color);
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("Ball %d: {%f, %f, %f} with color %d\n", i, ballPosition.x, ballPosition.y, ballPosition.z, balls.at(i).color);
+  }
+  for (int i = 10; i > balls.size(); i--) {
+    printf("\n");
   }
 }
 
@@ -713,7 +842,7 @@ void searchForBalls() { // The part of the auto script that searches for balls w
   // Rev shooter to full/partial speed reverse
   setShooterDirection(1);
   // threshold = number of balls we need to have loaded before we start shooting them.
-  std::vector<int> ballTypes = {RED_BALL, BLUE_BALL, YELLOW_BALL};
+  std::vector<int> ballTypes = {RED_BALL, BLUE_BALL};
   std::vector<Detection> ballsDetected = snapshotMultipleColors(ballTypes);
   printf("-------------------------\nBall detections before filtering positions:\n");
   printDetections(ballsDetected);
@@ -724,9 +853,17 @@ void searchForBalls() { // The part of the auto script that searches for balls w
   int BALL_THRESHOLD = 4;
   // While >0 balls seen, or ball count is below the threshold:
   while (ballsDetected.size() > 0 || ballsHeld.size() < BALL_THRESHOLD) {
-    ballSearch_GuidanceLoop(ballsDetected);
+    
     ballsDetected = snapshotMultipleColors(ballTypes);
+    Brain.Screen.clearScreen();
+    printDetectionsOntoScreen(ballsDetected, 1);
+    printBallCoordinates(ballsDetected);
+    ballsDetected = filterDetectionsForValidBalls(ballsDetected);
+    printDetectionsOntoScreen(ballsDetected, 2);
+    ballSearch_GuidanceLoop(ballsDetected);
+    position = vector3(0,0,0);
     updatePosition();
+    
     if (timeLimited) {return;}
   }
 }
@@ -797,8 +934,8 @@ void shootBalls() {
     wait(10, msec);
     // f. Push one ball out with the piston system (the piston positions are preset/known, no calculations or readings needed to see if the ball is shot out)
     pushBall();
+    printf("ball of color %d fired", ball.color);
     ballsHeld.pop_back();
-    printf("ball of color %d fired")
   }
   resetPusherPosition();
 }
@@ -919,13 +1056,15 @@ void pre_auton(void) {
   // Example: clearing encoders, setting servo positions, ...
   //
   // uses a physical-contact position resetting technique
-  resetArmAngle();
+  //resetArmAngle();
   // shooter should be on intake mode at the beginning
   //setShooterDirection(-1);
   // calibrate the position + rotation by reversing back to the wall and resetting the IMU's position
-  printf("Reversing");
-  reverseToWall();
+  printf("milestone\n");
+  //reverseToWall();
+  printf("milestone\n");
   resetPosition();
+  printf("milestone\n");
   getPlayingSide();
   printf("Playing side: %d", PLAYING_SIDE);
 }
@@ -1015,8 +1154,17 @@ int main() {
   //Competition.drivercontrol(usercontrol);
   //setShooterDirection(-1);
   //printImage();
-  printf("done1\n");
-  setShooterDirection(-1);
+  //printf("done1\n");
+  //setShooterDirection(1);
+  //printf("/SFhkfdhjksdf\n");
+  pre_auton();
+  //autonomous();
+  driveGlobal(vector3(40, 30, 0).mirror(), 180);
+  driveGlobal(vector3(30, 30, 0).mirror(), 0);
+  driveGlobal(vector3(20, 30, 0).mirror(), 0);
+  driveGlobal(vector3(30, 30, 0).mirror(), 0);
+  driveGlobal(vector3(40, 30, 0).mirror(), -180);
+  driveForwardDistance(1000, 100, true);
   wait(1000000000,sec);
   // Run the pre-autonomous function.
   //while(true) {
