@@ -101,7 +101,7 @@ class Detection {
 // constant for the positions of key points, relative to the recalibration position
 
 bool inTeleopPeriod = false;
-const int TARGET_CENTER_AND_WAIT = -1;
+const int TARGET_CORNER = -1;
 const int TARGET_RED_HOOP = 0;
 const int TARGET_BLUE_HOOP = 1;
 const int TARGET_CENTER_HOOP = 2;
@@ -880,7 +880,7 @@ int getTargetHoop(int ball) { // Get the hoop we should aim to based on the curr
     switch (ball) {
       case RED_BALL: return TARGET_RED_HOOP;
       case BLUE_BALL: return TARGET_BLUE_HOOP;
-      case YELLOW_BALL: return TARGET_CENTER_AND_WAIT;
+      case YELLOW_BALL: return TARGET_CORNER;
       default: printf("getTargetHoop given invalid input of %d", ball); return -2;
     }
   }
@@ -888,7 +888,7 @@ int getTargetHoop(int ball) { // Get the hoop we should aim to based on the curr
 
 vector3 getTargetPosition(int target) {
   switch(target) {
-    case TARGET_CENTER_AND_WAIT: return CORNER_POSITION;
+    case TARGET_CORNER: return CORNER_POSITION;
     case TARGET_RED_HOOP: return RED_HOOP_POSITION;
     case TARGET_BLUE_HOOP: return BLUE_HOOP_POSITION;
     case TARGET_CENTER_HOOP: return CENTER_HOOP_POSITION;
@@ -912,7 +912,7 @@ void shootBalls() {
   while (ballsHeld.size() > 0) {
     int ball = ballsHeld.at(ballsHeld.size()-1);
     int target = getTargetHoop(ball);
-    if (target == TARGET_CENTER_AND_WAIT && !timeLimited) {
+    if (target == TARGET_CORNER && !timeLimited) {
       return;
     }
     // a. Drive to a known hoop position
